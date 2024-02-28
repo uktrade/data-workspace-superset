@@ -1,5 +1,6 @@
 import contextlib
 import decimal
+import logging
 import os
 
 import sentry_sdk
@@ -49,6 +50,8 @@ PUBLIC_ROLE_PERMISSIONS = [
     ("can_warm_up_cache", "Superset"),
 ]
 
+logger = logging.getLogger(__name__)
+
 
 @contextlib.contextmanager
 def commit_at_end_only(db_session):
@@ -64,6 +67,10 @@ def commit_at_end_only(db_session):
         yield db_session
         db_session.commit = original_commit
         db_session.commit()
+    except Exception as e:
+        logger.exception('Unable to commit permissions changes')
+        db_session.rollback()
+        raise
     finally:
         db_session.commit = original_commit
 
@@ -174,18 +181,21 @@ def apply_public_role_permissions(sm, user, role_name):
         user.roles.append(role)
 
 
-def apply_datasource_perm(sm, role, datasource):
+def ensure_datasource_perm(sm, role, datasource):
     """
-    Give the specified role access to the specified datasource
+    Give the specified role access to the specified datasource. The sm functions under the hood
+    check if the view menu and permissions already exist, so this is a no-op in terms of changes
+    to the database if they do
     """
     permission_view_menu = sm.add_permission_view_menu("datasource_access", datasource.perm)
     sm.add_permission_role(role, permission_view_menu)
+    return permission_view_menu
 
 
-def delete_datasource_perms(sm, role):
-    for perm in role.permissions:
-        if perm.permission.name == "datasource_access":
-            sm.del_permission_role(role, perm)
+def delete_datasource_perms(current_perm_views, sm, role):
+    for perm_view in role.permissions:
+        if perm_view.permission.name == "datasource_access" and perm_view not in current_perm_views:
+            sm.del_permission_role(role, perm_view)
 
 
 def apply_editor_role_permissions(sm, user, role_name):
@@ -205,20 +215,19 @@ def apply_editor_role_permissions(sm, user, role_name):
         if not role:
             role = sm.find_role(role_name)
 
-        # Delete any existing perms attached to this user's role
-        delete_datasource_perms(sm, role)
+        current_perm_views = []
 
         # Give users access to any slices they are owners of
         for datasource in db_session.query(Slice).filter(  # pylint: disable=no-member
             Slice.owners.any(sm.user_model.id.in_([user.get_id()]))
         ):
-            apply_datasource_perm(sm, role, datasource)
+            current_perm_views.append(ensure_datasource_perm(sm, role, datasource))
 
         # Give users access to any datasets they are owners of
         for table in db_session.query(SqlaTable).filter(  # pylint: disable=no-member
             SqlaTable.owners.any(sm.user_model.id.in_([user.get_id()]))  # pylint: disable=no-member
         ):
-            apply_datasource_perm(sm, role, table)
+            current_perm_views.append(ensure_datasource_perm(sm, role, table))
 
             # By default "virtual" datasets are flagged and filtered out of the chart creation
             # forms without any indication. The argument for this was...
@@ -231,6 +240,11 @@ def apply_editor_role_permissions(sm, user, role_name):
                 db_session.add(table)  # pylint: disable=no-member
 
         user.roles.append(role)
+
+    # There is maybe a small chance of errors if multiple requests delete the same perms, but this
+    # should be rare, and a temporary situation
+    with commit_at_end_only(sm.get_session) as db_session:
+        delete_datasource_perms(current_perm_views, sm, role)
 
 
 def app_mutator(app):
