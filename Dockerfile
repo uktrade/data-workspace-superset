@@ -18,6 +18,7 @@ RUN \
     apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
+        libecpg-dev \
         libffi-dev \
         libldap2-dev \
         libsasl2-dev \

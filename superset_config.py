@@ -123,6 +123,15 @@ def apply_public_role_permissions(sm, user, role_name):
         Dashboard,
     )
 
+    # The Flask Security Manager (sm) has got commits in many of its functions. This makes it
+    # particularly tricky to do an atomic change the affects several different permissions. So we
+    # monkey patch the current database session to avoid committing until the very end.
+    def dummy_commit():
+        pass
+    db_session = sm.get_session
+    original_commit = db_session.commit
+    db_session.commit = dummy_commit
+
     role = sm.add_role(role_name)
     if not role:
         role = sm.find_role(role_name)
@@ -136,7 +145,7 @@ def apply_public_role_permissions(sm, user, role_name):
     for dashboard_id in request.headers["Dashboards"].split(","):
         if not dashboard_id:
             continue
-        dashboard = db.session.query(Dashboard).get(dashboard_id)  # pylint: disable=no-member
+        dashboard = db_session.query(Dashboard).get(dashboard_id)  # pylint: disable=no-member
         if dashboard is not None:
             for datasource in dashboard.slices:
                 permission_view_menu = sm.add_permission_view_menu(
@@ -152,7 +161,8 @@ def apply_public_role_permissions(sm, user, role_name):
             sm.del_permission_role(role, perm)
 
     user.roles.append(role)
-    sm.get_session.commit()
+    db_session.commit = original_commit
+    db_session.commit()
 
 
 def apply_datasource_perm(sm, role, datasource):
@@ -181,6 +191,15 @@ def apply_editor_role_permissions(sm, user, role_name):
         SqlaTable,
     )
 
+    # The Flask Security Manager (sm) has got commits in many of its functions. This makes it
+    # particularly tricky to do an atomic change. So we monkey patch the current database session
+    # to avoid committing until the very end
+    def dummy_commit():
+        pass
+    db_session = sm.get_session
+    original_commit = db_session.commit
+    db_session.commit = dummy_commit
+
     role = sm.add_role(role_name)
     if not role:
         role = sm.find_role(role_name)
@@ -189,13 +208,13 @@ def apply_editor_role_permissions(sm, user, role_name):
     delete_datasource_perms(sm, role)
 
     # Give users access to any slices they are owners of
-    for datasource in db.session.query(Slice).filter(  # pylint: disable=no-member
+    for datasource in db_session.query(Slice).filter(  # pylint: disable=no-member
         Slice.owners.any(sm.user_model.id.in_([user.get_id()]))
     ):
         apply_datasource_perm(sm, role, datasource)
 
     # Give users access to any datasets they are owners of
-    for table in db.session.query(SqlaTable).filter(  # pylint: disable=no-member
+    for table in db_session.query(SqlaTable).filter(  # pylint: disable=no-member
         SqlaTable.owners.any(sm.user_model.id.in_([user.get_id()]))  # pylint: disable=no-member
     ):
         apply_datasource_perm(sm, role, table)
@@ -208,10 +227,11 @@ def apply_editor_role_permissions(sm, user, role_name):
         # if they were tables.
         if table.is_sqllab_view:
             table.is_sqllab_view = False
-            db.session.add(table)  # pylint: disable=no-member
+            db_session.add(table)  # pylint: disable=no-member
 
     user.roles.append(role)
-    sm.get_session.commit()
+    db_session.commit = original_commit
+    db_session.commit()
 
 
 def app_mutator(app):
