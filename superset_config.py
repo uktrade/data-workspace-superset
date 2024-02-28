@@ -169,16 +169,16 @@ def apply_public_role_permissions(sm, user, role_name):
                     permission_view_menu = sm.add_permission_view_menu(
                         "datasource_access", datasource.perm
                     )
-                    if permission_view_menu not in role.permissions:
-                        sm.add_permission_role(role, permission_view_menu)
+                    sm.add_permission_role(role, permission_view_menu)
                     datasource_perms.append(permission_view_menu)
 
+        user.roles.append(role)
+
+    with commit_at_end_only(sm.get_session) as db_session:
         # Remove any permissions for dashboards that were not passed in via headers
         for perm in role.permissions:
             if perm.permission.name == "datasource_access" and perm not in datasource_perms:
                 sm.del_permission_role(role, perm)
-
-        user.roles.append(role)
 
 
 def ensure_datasource_perm(sm, role, datasource):
