@@ -91,7 +91,7 @@ WITH required_permissions(new_permission_view_role_id, permission_name, view_men
 		(nextval('ab_permission_view_role_id_seq'), 'menu_access', 'Data'),
 		(nextval('ab_permission_view_role_id_seq'), 'menu_access', 'Databases'),
 		(nextval('ab_permission_view_role_id_seq'), 'menu_access', 'Datasets'),
-		(nextval('ab_permission_view_role_if_seq'), 'menu_access', 'Home'),
+		(nextval('ab_permission_view_role_id_seq'), 'menu_access', 'Home'),
 		(nextval('ab_permission_view_role_id_seq'), 'menu_access', 'Import Dashboards'),
 		(nextval('ab_permission_view_role_id_seq'), 'menu_access', 'Plugins'),
 		(nextval('ab_permission_view_role_id_seq'), 'menu_access', 'Tags'),
