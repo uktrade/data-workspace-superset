@@ -1,3 +1,4 @@
+import contextlib
 import decimal
 import os
 
@@ -47,6 +48,24 @@ PUBLIC_ROLE_PERMISSIONS = [
     ("can_read", "Dashboard"),
     ("can_warm_up_cache", "Superset"),
 ]
+
+
+@contextlib.contextmanager
+def commit_at_end_only(db_session):
+    # The Flask Security Manager (sm) has got commits in many of its functions. This makes it
+    # particularly tricky to do an atomic change the affects several different permissions. So we
+    # monkey patch the current database session to avoid committing until the very end.
+    def dummy_commit():
+        pass
+    original_commit = db_session.commit
+    db_session.commit = dummy_commit
+
+    try:
+        yield db_session
+        db_session.commit = original_commit
+        db_session.commit()
+    finally:
+        db_session.commit = original_commit
 
 
 class DataWorkspaceRemoteUserView(AuthView):
@@ -123,46 +142,36 @@ def apply_public_role_permissions(sm, user, role_name):
         Dashboard,
     )
 
-    # The Flask Security Manager (sm) has got commits in many of its functions. This makes it
-    # particularly tricky to do an atomic change the affects several different permissions. So we
-    # monkey patch the current database session to avoid committing until the very end.
-    def dummy_commit():
-        pass
-    db_session = sm.get_session
-    original_commit = db_session.commit
-    db_session.commit = dummy_commit
+    with commit_at_end_only(sm.get_session) as db_session:
+        role = sm.add_role(role_name)
+        if not role:
+            role = sm.find_role(role_name)
 
-    role = sm.add_role(role_name)
-    if not role:
-        role = sm.find_role(role_name)
+        for perm in PUBLIC_ROLE_PERMISSIONS:
+            permission_view_menu = sm.find_permission_view_menu(perm[0], perm[1])
+            sm.add_permission_role(role, permission_view_menu)
 
-    for perm in PUBLIC_ROLE_PERMISSIONS:
-        permission_view_menu = sm.find_permission_view_menu(perm[0], perm[1])
-        sm.add_permission_role(role, permission_view_menu)
+        # Add permissions for datasources in dashboards that the user has access to
+        datasource_perms = []
+        for dashboard_id in request.headers["Dashboards"].split(","):
+            if not dashboard_id:
+                continue
+            dashboard = db_session.query(Dashboard).get(dashboard_id)  # pylint: disable=no-member
+            if dashboard is not None:
+                for datasource in dashboard.slices:
+                    permission_view_menu = sm.add_permission_view_menu(
+                        "datasource_access", datasource.perm
+                    )
+                    if permission_view_menu not in role.permissions:
+                        sm.add_permission_role(role, permission_view_menu)
+                    datasource_perms.append(permission_view_menu)
 
-    # Add permissions for datasources in dashboards that the user has access to
-    datasource_perms = []
-    for dashboard_id in request.headers["Dashboards"].split(","):
-        if not dashboard_id:
-            continue
-        dashboard = db_session.query(Dashboard).get(dashboard_id)  # pylint: disable=no-member
-        if dashboard is not None:
-            for datasource in dashboard.slices:
-                permission_view_menu = sm.add_permission_view_menu(
-                    "datasource_access", datasource.perm
-                )
-                if permission_view_menu not in role.permissions:
-                    sm.add_permission_role(role, permission_view_menu)
-                datasource_perms.append(permission_view_menu)
+        # Remove any permissions for dashboards that were not passed in via headers
+        for perm in role.permissions:
+            if perm.permission.name == "datasource_access" and perm not in datasource_perms:
+                sm.del_permission_role(role, perm)
 
-    # Remove any permissions for dashboards that were not passed in via headers
-    for perm in role.permissions:
-        if perm.permission.name == "datasource_access" and perm not in datasource_perms:
-            sm.del_permission_role(role, perm)
-
-    user.roles.append(role)
-    db_session.commit = original_commit
-    db_session.commit()
+        user.roles.append(role)
 
 
 def apply_datasource_perm(sm, role, datasource):
@@ -191,47 +200,37 @@ def apply_editor_role_permissions(sm, user, role_name):
         SqlaTable,
     )
 
-    # The Flask Security Manager (sm) has got commits in many of its functions. This makes it
-    # particularly tricky to do an atomic change. So we monkey patch the current database session
-    # to avoid committing until the very end
-    def dummy_commit():
-        pass
-    db_session = sm.get_session
-    original_commit = db_session.commit
-    db_session.commit = dummy_commit
+    with commit_at_end_only(sm.get_session) as db_session:
+        role = sm.add_role(role_name)
+        if not role:
+            role = sm.find_role(role_name)
 
-    role = sm.add_role(role_name)
-    if not role:
-        role = sm.find_role(role_name)
+        # Delete any existing perms attached to this user's role
+        delete_datasource_perms(sm, role)
 
-    # Delete any existing perms attached to this user's role
-    delete_datasource_perms(sm, role)
+        # Give users access to any slices they are owners of
+        for datasource in db_session.query(Slice).filter(  # pylint: disable=no-member
+            Slice.owners.any(sm.user_model.id.in_([user.get_id()]))
+        ):
+            apply_datasource_perm(sm, role, datasource)
 
-    # Give users access to any slices they are owners of
-    for datasource in db_session.query(Slice).filter(  # pylint: disable=no-member
-        Slice.owners.any(sm.user_model.id.in_([user.get_id()]))
-    ):
-        apply_datasource_perm(sm, role, datasource)
+        # Give users access to any datasets they are owners of
+        for table in db_session.query(SqlaTable).filter(  # pylint: disable=no-member
+            SqlaTable.owners.any(sm.user_model.id.in_([user.get_id()]))  # pylint: disable=no-member
+        ):
+            apply_datasource_perm(sm, role, table)
 
-    # Give users access to any datasets they are owners of
-    for table in db_session.query(SqlaTable).filter(  # pylint: disable=no-member
-        SqlaTable.owners.any(sm.user_model.id.in_([user.get_id()]))  # pylint: disable=no-member
-    ):
-        apply_datasource_perm(sm, role, table)
+            # By default "virtual" datasets are flagged and filtered out of the chart creation
+            # forms without any indication. The argument for this was...
+            # "it may be a bit confusing, but certainly less than seeing lots of user generated views."
+            # As we only allow users to see the "views" they have created this does not work for us.
+            # So here we remove the flag so users can create charts with virtual datasets as
+            # if they were tables.
+            if table.is_sqllab_view:
+                table.is_sqllab_view = False
+                db_session.add(table)  # pylint: disable=no-member
 
-        # By default "virtual" datasets are flagged and filtered out of the chart creation
-        # forms without any indication. The argument for this was...
-        # "it may be a bit confusing, but certainly less than seeing lots of user generated views."
-        # As we only allow users to see the "views" they have created this does not work for us.
-        # So here we remove the flag so users can create charts with virtual datasets as
-        # if they were tables.
-        if table.is_sqllab_view:
-            table.is_sqllab_view = False
-            db_session.add(table)  # pylint: disable=no-member
-
-    user.roles.append(role)
-    db_session.commit = original_commit
-    db_session.commit()
+        user.roles.append(role)
 
 
 def app_mutator(app):
