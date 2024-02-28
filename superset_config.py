@@ -313,7 +313,7 @@ def app_mutator(app):
 
     @app.before_request
     def before_request():  # pylint: disable=unused-variable
-        if g.user is not None and g.user.is_authenticated:
+        if g.user is not None and g.user.is_authenticated and not request.path.startswith('/static/'):
             role_name = base_role_names[request.host.split(".")[0]]
             if role_name == "Public":
                 apply_public_role_permissions(security_manager, g.user, f"{g.user.username}-Role")
