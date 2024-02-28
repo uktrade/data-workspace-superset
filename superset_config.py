@@ -314,7 +314,15 @@ ADDITIONAL_MIDDLEWARE = [lambda app: ProxyFix(app, x_proto=1)]
 FEATURE_FLAGS = {"SQLLAB_BACKEND_PERSISTENCE": True}
 
 if os.environ.get("SENTRY_DSN") is not None:
-    sentry_sdk.init(
+    # This doesn't go over the public internet, so it's fine to not use HTTPS
+    class DisabledHTTPSCertificateVerification(sentry_sdk.transport.HttpTransport):
+        def _get_pool_options(self, ca_certs):
+            options = super()._get_pool_options(ca_certs)
+            options["cert_reqs"] = "CERT_NONE"
+            return options
+
+    sentry = sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
         integrations=[FlaskIntegration()],
+        transport=DisabledHTTPSCertificateVerification,
     )
