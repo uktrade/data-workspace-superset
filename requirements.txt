@@ -165,7 +165,7 @@ holidays==0.25
     # via apache-superset
 humanize==3.5.0
     # via apache-superset
-idna==2.10
+idna==3.7
     # via
     #   email-validator
     #   requests
