@@ -154,7 +154,6 @@ greenlet==3.0.1
     # via
     #   gevent
     #   shillelagh
-    #   sqlalchemy
 gunicorn==21.2.0
     # via
     #   -r requirements.in
@@ -396,7 +395,7 @@ vine==5.1.0
     #   kombu
 wcwidth==0.2.5
     # via prompt-toolkit
-werkzeug==2.3.8
+werkzeug==3.0.3
     # via
     #   flask
     #   flask-appbuilder
