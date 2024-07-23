@@ -414,7 +414,7 @@ wtforms-json==0.3.3
     # via apache-superset
 xlsxwriter==3.0.9
     # via apache-superset
-zipp==3.17.0
+zipp==3.19.1
     # via
     #   importlib-metadata
     #   importlib-resources
