@@ -1,5 +1,6 @@
 import contextlib
 import decimal
+import json
 import logging
 import os
 
@@ -14,7 +15,7 @@ from sentry_sdk.integrations.flask import FlaskIntegration
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Semi-magical request-local proxy objects
-from flask import g, json, make_response, redirect, request, session
+from flask import g, make_response, redirect, request, session
 
 from superset import db, security_manager
 from superset.security import SupersetSecurityManager

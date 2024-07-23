@@ -120,7 +120,7 @@ flask-caching==2.1.0
     # via apache-superset
 flask-compress==1.13
     # via apache-superset
-flask-jwt-extended==4.4.2
+flask-jwt-extended==4.6.0
     # via flask-appbuilder
 flask-limiter==3.3.0
     # via flask-appbuilder
