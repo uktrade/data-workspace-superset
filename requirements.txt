@@ -45,7 +45,7 @@ cattrs==23.2.3
     # via requests-cache
 celery==5.3.6
     # via apache-superset
-certifi==2023.7.22
+certifi==2024.7.4
     # via
     #   requests
     #   sentry-sdk
