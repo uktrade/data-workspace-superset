@@ -112,7 +112,7 @@ flask==2.3.3
     #   flask-sqlalchemy
     #   flask-wtf
     #   sentry-sdk
-flask-appbuilder==4.4.1
+flask-appbuilder==4.5.1
     # via apache-superset
 flask-babel==1.0.0
     # via flask-appbuilder
@@ -156,6 +156,7 @@ greenlet==3.0.1
     # via
     #   gevent
     #   shillelagh
+    #   sqlalchemy
 gunicorn==21.2.0
     # via
     #   -r requirements.in
