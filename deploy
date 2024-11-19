@@ -30,7 +30,7 @@ aws ecr get-login-password --region eu-west-2 | docker login --username AWS --pa
 
 echo "Building docker image"
 if [ "$(uname)" == "Darwin" ]; then
-  DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -t ecs-superset:latest -f Dockerfile .
+  DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -t superset:latest -f Dockerfile .
 else
   docker build -t superset:latest -f Dockerfile .
 fi
