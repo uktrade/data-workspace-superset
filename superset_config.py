@@ -20,6 +20,13 @@ from flask import g, make_response, redirect, request, session
 from superset import db, security_manager
 from superset.security import SupersetSecurityManager
 
+# Suspect that https://github.com/apache/superset/pull/29461 introduced an issue in 4.1.0, causing
+# the DB_CONNECTION_MUTATOR to not have access to the current request and so not to the right
+# credentials for the current user. That PR wrapped code in the "test_request_context", so we
+# undo it by making that do nothing
+from flask import Flask
+Flask.test_request_context = contextlib.nullcontext
+
 SQLALCHEMY_DATABASE_URI = (
     f'postgresql+psycopg2://{os.environ["DB_USER"]}:{os.environ["DB_PASSWORD"]}'
     f'@{os.environ["DB_HOST"]}/{os.environ["DB_NAME"]}'
