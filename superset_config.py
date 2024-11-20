@@ -352,7 +352,10 @@ CUSTOM_SECURITY_MANAGER = DataWorkspaceSecurityManager
 AUTH_TYPE = AUTH_REMOTE_USER
 ADDITIONAL_MIDDLEWARE = [lambda app: ProxyFix(app, x_proto=1)]
 
-FEATURE_FLAGS = {"SQLLAB_BACKEND_PERSISTENCE": True}
+FEATURE_FLAGS = {
+    "SQLLAB_BACKEND_PERSISTENCE": True,
+    "ALLOW_ADHOC_SUBQUERY": True,
+}
 
 if os.environ.get("SENTRY_DSN") is not None:
     # This doesn't go over the public internet, so it's fine to not use HTTPS
